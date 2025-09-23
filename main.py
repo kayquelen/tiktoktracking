@@ -9,6 +9,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from datetime import datetime
 from dotenv import load_dotenv
+import tempfile
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -17,13 +18,30 @@ app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'chave_padrao_insegura')
 CORS(app)
 
-# Configuração do banco - FORÇAR SQLite
-database_url = os.getenv('DATABASE_URL', 'sqlite:///instance/tiktok_automation.db')
+# Configuração do banco - USAR SQLITE EM MEMÓRIA PARA PRODUÇÃO
+# Criar diretório temporário para SQLite
+temp_dir = tempfile.mkdtemp()
+database_path = os.path.join(temp_dir, 'tiktok_automation.db')
 
-# Garantir que sempre use SQLite em produção
-if database_url.startswith('postgres://'):
-    print("⚠️  PostgreSQL detectado, forçando SQLite...")
-    database_url = 'sqlite:///instance/tiktok_automation.db'
+# Usar SQLite em memória se não conseguir criar arquivo
+try:
+    # Tentar criar arquivo de teste
+    test_file = os.path.join(temp_dir, 'test.db')
+    with open(test_file, 'w') as f:
+        f.write('test')
+    os.remove(test_file)
+    database_url = f'sqlite:///{database_path}'
+    print(f" Usando SQLite com arquivo: {database_path}")
+except:
+    # Se não conseguir criar arquivo, usar memória
+    database_url = 'sqlite:///:memory:'
+    print("  Usando SQLite em memória (dados não persistem)")
+
+# Permitir override via environment
+env_db_url = os.getenv('DATABASE_URL')
+if env_db_url and not env_db_url.startswith('postgres'):
+    database_url = env_db_url
+    print(f" Usando DATABASE_URL do ambiente: {database_url}")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
