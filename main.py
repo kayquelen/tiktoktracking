@@ -4,7 +4,7 @@ import json
 import hashlib
 import secrets
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from datetime import datetime
@@ -124,6 +124,29 @@ class TikTokEventsAPI:
             return ""
         return hashlib.sha256(str(value).lower().strip().encode('utf-8')).hexdigest()
     
+    def _format_value_for_tiktok(self, value, currency='BRL'):
+        """Formatar valor para padrão TikTok"""
+        try:
+            # Converter para float e garantir 2 casas decimais
+            formatted_value = round(float(value), 2)
+            
+            # TikTok espera valores mínimos diferentes por moeda
+            min_values = {
+                'BRL': 0.01,  # R$ 0,01
+                'USD': 0.01,  # $0.01
+                'EUR': 0.01,  # €0.01
+            }
+            
+            min_value = min_values.get(currency.upper(), 0.01)
+            
+            # Garantir valor mínimo
+            if formatted_value < min_value:
+                formatted_value = min_value
+                
+            return formatted_value
+        except (ValueError, TypeError):
+            return 0.01  # Valor padrão seguro
+    
     def send_purchase_event(self, event_data):
         """Envia evento de compra para TikTok - Formato EXATO do exemplo oficial"""
         try:
@@ -151,7 +174,10 @@ class TikTokEventsAPI:
                 'properties': {
                     'content_type': 'product',
                     'currency': str(event_data.get('currency', 'BRL')).upper(),
-                    'value': float(event_data.get('value', 0))
+                    'value': self._format_value_for_tiktok(
+                        event_data.get('value', 0), 
+                        event_data.get('currency', 'BRL')
+                    )
                 }
             }
             
@@ -404,8 +430,10 @@ def test_webhook_real():
     metadata = data.get('data', {}).get('object', {}).get('metadata', {})
     manager_id = metadata.get('utm_term')
     
+    # Se não houver utm_term, usar pixel padrão
     if not manager_id:
-        return jsonify({'success': False, 'error': 'utm_term não encontrado'}), 400
+        manager_id = 'prod-1'  # Pixel padrão
+        print(f"utm_term não encontrado, usando pixel padrão: {manager_id}")
     
     # Buscar pixel
     pixel = TikTokPixel.query.filter_by(id_gestor=manager_id, ativo=True).first()
@@ -450,16 +478,70 @@ def test_webhook_real():
         'real_send': True
     })
 
+def validate_stripe_signature(payload, signature, endpoint_secret):
+    """Valida assinatura do webhook Stripe"""
+    try:
+        import hmac
+        import hashlib
+        
+        if not signature or not endpoint_secret:
+            return False
+            
+        # Extrair timestamp e assinatura
+        elements = signature.split(',')
+        timestamp = None
+        signatures = []
+        
+        for element in elements:
+            key, value = element.split('=', 1)
+            if key == 't':
+                timestamp = value
+            elif key == 'v1':
+                signatures.append(value)
+        
+        if not timestamp or not signatures:
+            return False
+            
+        # Criar payload para verificação
+        signed_payload = f"{timestamp}.{payload}"
+        
+        # Verificar assinatura
+        expected_signature = hmac.new(
+            endpoint_secret.encode('utf-8'),
+            signed_payload.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        return any(hmac.compare_digest(expected_signature, sig) for sig in signatures)
+    except Exception as e:
+        print(f"Erro na validação da assinatura: {e}")
+        return False
+
 @app.route('/webhook/stripe', methods=['POST'])
 def stripe_webhook():
-    """Webhook real do Stripe"""
-    data = request.get_json(silent=True)
-    
-    if not data:
-        app.logger.warning(
-            f"stripe_webhook: JSON ausente ou inválido. Content-Type={request.content_type}, raw_body={request.data}"
-        )
-        return jsonify({'success': False, 'error': 'JSON obrigatório'}), 400
+    """Webhook real do Stripe com validação de assinatura"""
+    try:
+        # Obter payload raw para validação de assinatura
+        payload = request.get_data(as_text=True)
+        signature = request.headers.get('Stripe-Signature', '')
+        
+        # Validar assinatura Stripe (em produção)
+        stripe_endpoint_secret = os.getenv('STRIPE_ENDPOINT_SECRET')
+        if stripe_endpoint_secret and not validate_stripe_signature(payload, signature, stripe_endpoint_secret):
+            app.logger.warning("Assinatura Stripe inválida")
+            return jsonify({'success': False, 'error': 'Assinatura inválida'}), 400
+        
+        # Parse JSON após validação
+        data = request.get_json(silent=True)
+        
+        if not data:
+            app.logger.warning(
+                f"stripe_webhook: JSON ausente ou inválido. Content-Type={request.content_type}"
+            )
+            return jsonify({'success': False, 'error': 'JSON obrigatório'}), 400
+    except Exception as e:
+        app.logger.error(f"Erro no webhook Stripe: {e}")
+        return jsonify({'success': False, 'error': 'Erro interno'}), 500
     
     # Processar apenas eventos de pagamento bem-sucedidos
     if data.get('type') not in ['payment_intent.succeeded', 'checkout.session.completed']:
@@ -469,8 +551,10 @@ def stripe_webhook():
     metadata = data.get('data', {}).get('object', {}).get('metadata', {})
     manager_id = metadata.get('utm_term')
     
+    # Se não houver utm_term, usar pixel padrão
     if not manager_id:
-        return jsonify({'success': False, 'error': 'utm_term não encontrado'}), 400
+        manager_id = 'prod-1'  # Pixel padrão
+        print(f"utm_term não encontrado, usando pixel padrão: {manager_id}")
     
     # Buscar pixel
     pixel = TikTokPixel.query.filter_by(id_gestor=manager_id, ativo=True).first()
@@ -480,15 +564,50 @@ def stripe_webhook():
     # Criar cliente TikTok
     tiktok_client = TikTokEventsAPI(pixel.access_token, pixel.pixel_id)
     
-    # Preparar dados do evento
+    # Preparar dados do evento com extração melhorada
     event_obj = data.get('data', {}).get('object', {})
+    
+    # Extrair dados do cliente de múltiplas fontes
+    customer_email = (
+        metadata.get('customer_email') or 
+        event_obj.get('receipt_email') or
+        event_obj.get('billing_details', {}).get('email') or
+        event_obj.get('customer_details', {}).get('email')  # Para checkout.session
+    )
+    
+    customer_phone = (
+        metadata.get('customer_phone') or
+        event_obj.get('billing_details', {}).get('phone') or
+        event_obj.get('customer_details', {}).get('phone')  # Para checkout.session
+    )
+    
+    # Extrair nome do cliente
+    customer_name = (
+        event_obj.get('customer_details', {}).get('name') or
+        event_obj.get('billing_details', {}).get('name')
+    )
+    
+    # Para checkout.session.completed, buscar customer details
+    customer_id = event_obj.get('customer') or event_obj.get('payment_intent')
+    
+    # Determinar valor correto baseado no tipo de evento
+    if data.get('type') == 'checkout.session.completed':
+        amount = event_obj.get('amount_total', 0)
+    else:
+        amount = event_obj.get('amount', 0)
+    
     event_data = {
         'stripe_event_id': data.get('id'),
-        'value': event_obj.get('amount', 0) / 100,  # Converter centavos
+        'value': amount / 100,  # Converter centavos
         'currency': event_obj.get('currency', 'brl'),
-        'external_id': event_obj.get('customer'),
-        'email': metadata.get('customer_email')
+        'external_id': customer_id,
+        'email': customer_email,
+        'phone': customer_phone,
+        'customer_name': customer_name,
+        'page_url': event_obj.get('success_url', 'https://checkout.stripe.com/success')
     }
+    
+    print(f"Dados extraídos do Stripe: {json.dumps(event_data, indent=2, ensure_ascii=False)}")
     
     # Enviar para TikTok
     result = tiktok_client.send_purchase_event(event_data)
@@ -513,6 +632,45 @@ def stripe_webhook():
         'pixel_id': pixel.pixel_id
     })
 
+@app.route('/create-payment-intent', methods=['POST'])
+def create_payment_intent():
+    """Criar Payment Intent para teste"""
+    try:
+        data = request.get_json()
+        
+        # Simular criação de Payment Intent (você precisa usar sua Stripe Secret Key real)
+        return jsonify({
+            'client_secret': 'pi_test_1234567890_secret_fake',
+            'message': 'Use sua própria implementação Stripe aqui'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/webhook-info', methods=['GET'])
+def webhook_info():
+    """Informações para configurar webhook do Stripe"""
+    base_url = request.host_url.rstrip('/')
+    
+    return jsonify({
+        'webhook_url': f"{base_url}/webhook/stripe",
+        'events_to_listen': [
+            'payment_intent.succeeded',
+            'checkout.session.completed'
+        ],
+        'instructions': {
+            'step_1': 'Acesse o Stripe Dashboard → Developers → Webhooks',
+            'step_2': f'Adicione endpoint: {base_url}/webhook/stripe',
+            'step_3': 'Selecione eventos: payment_intent.succeeded, checkout.session.completed',
+            'step_4': 'Copie o Signing Secret e configure STRIPE_ENDPOINT_SECRET no servidor',
+            'step_5': 'Adicione utm_term=<pixel_id> nos metadata dos pagamentos'
+        },
+        'metadata_required': {
+            'utm_term': 'ID do pixel (ex: prod-1)',
+            'customer_email': 'Email do cliente (opcional)',
+            'customer_phone': 'Telefone do cliente (opcional)'
+        }
+    })
+
 @app.route('/')
 def index():
     return send_from_directory('static', 'index.html')
@@ -530,4 +688,3 @@ if __name__ == '__main__':
     debug = os.getenv('DEBUG', 'False').lower() == 'true'
     
     app.run(host=host, port=port, debug=debug)
-
