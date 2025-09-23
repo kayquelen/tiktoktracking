@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../Downloads/stripe-tiktok-automation-github/database"
+		},
+		{
+			"path": "../../Downloads/stripe-tiktok-automation-github/deploy"
+		},
+		{
+			"path": "../../Downloads/stripe-tiktok-automation-github/src"
+		}
+	],
+	"settings": {}
+}

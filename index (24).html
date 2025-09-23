@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automação Stripe → TikTok</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            opacity: 0.9;
+        }
+        
+        .section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .section h2 {
+            color: #2d3436;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2d3436;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #74b9ff;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #00b894 0%, #00a085 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 5px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #e17055 0%, #d63031 100%);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: 500;
+        }
+        
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .pixel-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .pixel-info h4 {
+            color: #2d3436;
+            margin-bottom: 5px;
+        }
+        
+        .pixel-info p {
+            color: #636e72;
+            font-size: 14px;
+        }
+        
+        .pixel-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .pixel-actions .btn {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        
+        pre {
+            background: #2d3436;
+            color: #ddd;
+            padding: 15px;
+            border-radius: 10px;
+            overflow-x: auto;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        
+        .webhook-info {
+            background: #e8f4f8;
+            border: 1px solid #bee5eb;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .webhook-url {
+            background: #2d3436;
+            color: #74b9ff;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+        
+        @media (max-width: 768px) {
+            .pixel-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .pixel-actions {
+                margin-top: 15px;
+                width: 100%;
+                justify-content: flex-start;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Automação Stripe → TikTok</h1>
+            <p>Gerencie pixels e monitore eventos de conversão</p>
+        </div>
+        
+        <div class="content">
+            <!-- Estatísticas -->
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-pixels">0</div>
+                    <div class="stat-label">Pixels Ativos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="total-events">0</div>
+                    <div class="stat-label">Eventos Processados</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="success-rate">0%</div>
+                    <div class="stat-label">Taxa de Sucesso</div>
+                </div>
+            </div>
+            
+            <!-- Adicionar Pixel -->
+            <div class="section">
+                <h2>➕ Adicionar Novo Pixel</h2>
+                <form id="pixelForm">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="id_gestor">ID do Gestor *</label>
+                            <input type="text" id="id_gestor" required placeholder="Ex: 1, loja_principal">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="pixel_id">Pixel ID *</label>
+                            <input type="text" id="pixel_id" required placeholder="ID do pixel do TikTok">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="access_token">Access Token *</label>
+                            <input type="password" id="access_token" required placeholder="Token da API do TikTok">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="nome_pixel">Nome do Pixel</label>
+                            <input type="text" id="nome_pixel" placeholder="Nome descritivo (opcional)">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn">Adicionar Pixel</button>
+                </form>
+                
+                <div id="result"></div>
+            </div>
+            
+            <!-- Pixels Cadastrados -->
+            <div class="section">
+                <h2>📊 Pixels Cadastrados</h2>
+                <button onclick="loadPixels()" class="btn btn-secondary">🔄 Atualizar Lista</button>
+                <div id="pixels"></div>
+            </div>
+            
+            <!-- Configuração Webhook -->
+            <div class="section">
+                <h2>🔗 Configuração do Webhook</h2>
+                <div class="webhook-info">
+                    <p><strong>URL para configurar no Stripe:</strong></p>
+                    <div class="webhook-url" id="webhook-url">Carregando...</div>
+                    <p><small>Configure esta URL no seu painel do Stripe para receber webhooks automaticamente.</small></p>
+                </div>
+                
+                <h3>🧪 Testes</h3>
+                <button onclick="testWebhook()" class="btn btn-secondary">🔍 Teste Simulação</button>
+                <button onclick="testWebhookReal()" class="btn btn-danger">🚀 Teste REAL (TikTok)</button>
+                <div id="webhookResult"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuração da API
+        const API_BASE = '/api';
+        const WEBHOOK_BASE = '/webhook';
+
+        // Estado da aplicação
+        let currentPixels = [];
+
+        // Utilitários
+        function showAlert(message, type = 'success') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `<div class="result ${type}">${message}</div>`;
+            
+            setTimeout(() => {
+                resultDiv.innerHTML = '';
+            }, 10000);
+        }
+
+        function showWebhookResult(message, type = 'success') {
+            const resultDiv = document.getElementById('webhookResult');
+            resultDiv.innerHTML = `<div class="result ${type}">${message}</div>`;
+        }
+
+        // Carregar estatísticas
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('total-pixels').textContent = data.stats.total_pixels;
+                    document.getElementById('total-events').textContent = data.stats.total_events;
+                    document.getElementById('success-rate').textContent = data.stats.success_rate + '%';
+                }
+            } catch (error) {
+                console.error('Erro ao carregar estatísticas:', error);
+            }
+        }
+
+        // Carregar pixels
+        async function loadPixels() {
+            try {
+                const response = await fetch(`${API_BASE}/pixels`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentPixels = data.pixels;
+                    renderPixels(data.pixels);
+                } else {
+                    document.getElementById('pixels').innerHTML = `<div class="result error">Erro ao carregar pixels: ${data.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Erro ao carregar pixels:', error);
+                document.getElementById('pixels').innerHTML = `<div class="result error">Erro de conexão ao carregar pixels</div>`;
+            }
+        }
+
+        // Renderizar lista de pixels
+        function renderPixels(pixels) {
+            const container = document.getElementById('pixels');
+            
+            if (pixels.length === 0) {
+                container.innerHTML = `
+                    <p style="text-align: center; color: #636e72; padding: 40px;">
+                        Nenhum pixel cadastrado ainda.<br>
+                        Use o formulário acima para adicionar seu primeiro pixel.
+                    </p>
+                `;
+                return;
+            }
+            
+            container.innerHTML = pixels.map(pixel => `
+                <div class="pixel-item">
+                    <div class="pixel-info">
+                        <h4>${pixel.nome_pixel || `Pixel ${pixel.id_gestor}`}</h4>
+                        <p>
+                            <strong>ID Gestor:</strong> ${pixel.id_gestor} | 
+                            <strong>Pixel ID:</strong> ${pixel.pixel_id} | 
+                            <strong>Criado:</strong> ${new Date(pixel.created_at).toLocaleDateString('pt-BR')}
+                        </p>
+                    </div>
+                    <div class="pixel-actions">
+                        <button class="btn btn-secondary" onclick="viewLogs('${pixel.id_gestor}')">📋 Logs</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Ver logs de um pixel
+        async function viewLogs(idGestor) {
+            try {
+                const response = await fetch(`${API_BASE}/pixels/${idGestor}/logs`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (data.logs.length === 0) {
+                        alert('Nenhum evento processado ainda para este pixel.');
+                        return;
+                    }
+                    
+                    const logsText = data.logs.map(log => 
+                        `${new Date(log.created_at).toLocaleString('pt-BR')} - ${log.stripe_event_type} - ${log.status.toUpperCase()}${log.error_message ? ' - ' + log.error_message : ''}`
+                    ).join('\\n');
+                    
+                    alert(`Últimos eventos do pixel ${idGestor}:\\n\\n${logsText}`);
+                } else {
+                    alert('Erro ao carregar logs: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar logs:', error);
+                alert('Erro de conexão ao carregar logs');
+            }
+        }
+
+        // Adicionar pixel
+        document.getElementById('pixelForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                id_gestor: document.getElementById('id_gestor').value,
+                pixel_id: document.getElementById('pixel_id').value,
+                access_token: document.getElementById('access_token').value,
+                nome_pixel: document.getElementById('nome_pixel').value
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/pixels`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`✅ Pixel criado com sucesso!<br><strong>Chave de segurança:</strong> <code>${data.chave_seguranca}</code><br><small>Guarde esta chave com segurança!</small>`, 'success');
+                    document.getElementById('pixelForm').reset();
+                    loadPixels();
+                    loadStats();
+                } else {
+                    showAlert(`❌ Erro ao criar pixel: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao criar pixel:', error);
+                showAlert('❌ Erro de conexão ao criar pixel', 'error');
+            }
+        });
+
+        // Testar webhook (simulação)
+        async function testWebhook() {
+            if (currentPixels.length === 0) {
+                showWebhookResult('❌ Adicione pelo menos um pixel antes de testar', 'error');
+                return;
+            }
+            
+            const testEvent = {
+                id: 'evt_test_' + Date.now(),
+                type: 'payment_intent.succeeded',
+                data: {
+                    object: {
+                        id: 'pi_test_' + Date.now(),
+                        amount: 9999,
+                        currency: 'brl',
+                        metadata: {
+                            utm_term: currentPixels[0].id_gestor
+                        }
+                    }
+                }
+            };
+            
+            try {
+                const response = await fetch(`${WEBHOOK_BASE}/stripe/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testEvent)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showWebhookResult(`✅ Teste de simulação realizado com sucesso!<br><strong>Pixel:</strong> ${result.pixel_id}<br><small>Este teste NÃO envia para o TikTok</small>`, 'success');
+                } else {
+                    showWebhookResult(`❌ Erro no teste: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showWebhookResult(`❌ Erro de conexão: ${error.message}`, 'error');
+            }
+        }
+
+        // Testar webhook real
+        async function testWebhookReal() {
+            if (currentPixels.length === 0) {
+                showWebhookResult('❌ Adicione pelo menos um pixel antes de testar', 'error');
+                return;
+            }
+            
+            if (!confirm('⚠️ ATENÇÃO: Isso vai REALMENTE enviar um evento para o TikTok!\\n\\nTem certeza que quer continuar?')) {
+                return;
+            }
+            
+            const testEvent = {
+                id: 'evt_real_test_' + Date.now(),
+                type: 'payment_intent.succeeded',
+                data: {
+                    object: {
+                        id: 'pi_real_test_' + Date.now(),
+                        amount: 9999,
+                        currency: 'brl',
+                        customer: 'cus_test_real_' + Date.now(),
+                        metadata: {
+                            utm_term: currentPixels[0].id_gestor,
+                            customer_email: 'test@example.com'
+                        }
+                    }
+                }
+            };
+            
+            showWebhookResult('🚀 Enviando para TikTok... Aguarde...', 'success');
+            
+            try {
+                const response = await fetch(`${WEBHOOK_BASE}/stripe/test-real`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testEvent)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showWebhookResult(`🎉 EVENTO ENVIADO PARA TIKTOK COM SUCESSO!<br><strong>Pixel:</strong> ${result.pixel_id}<br><strong>Event ID:</strong> ${result.event_id}<br><strong>Resposta do TikTok:</strong><pre>${JSON.stringify(result.tiktok_result, null, 2)}</pre>`, 'success');
+                } else {
+                    showWebhookResult(`❌ Erro ao enviar para TikTok:<br><strong>Erro:</strong> ${result.message}<br><strong>Detalhes:</strong><pre>${JSON.stringify(result.tiktok_result || {}, null, 2)}</pre>`, 'error');
+                }
+                
+                // Atualizar estatísticas após o teste
+                setTimeout(() => {
+                    loadStats();
+                }, 1000);
+                
+            } catch (error) {
+                showWebhookResult(`❌ Erro de conexão: ${error.message}`, 'error');
+            }
+        }
+
+        // Atualizar URL do webhook
+        function updateWebhookUrl() {
+            const webhookUrl = `${window.location.origin}/webhook/stripe`;
+            document.getElementById('webhook-url').textContent = webhookUrl;
+        }
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', function() {
+            updateWebhookUrl();
+            loadStats();
+            loadPixels();
+            
+            // Atualizar dados a cada 30 segundos
+            setInterval(() => {
+                loadStats();
+            }, 30000);
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,16 @@
+[Unit]
+Description=TikTok Automation Flask App
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=tiktok
+Group=tiktok
+WorkingDirectory=/opt/stripe-tiktok-automation
+Environment=PATH=/opt/stripe-tiktok-automation/venv/bin
+ExecStart=/opt/stripe-tiktok-automation/venv/bin/python src/main.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
