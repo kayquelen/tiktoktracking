@@ -234,6 +234,25 @@ class TikTokEventsAPI:
             }
 
 # Rotas da API
+@app.route('/')
+def home():
+    """Página inicial - Health Check"""
+    return {
+        'status': 'ok',
+        'service': 'TikTok Stripe Integration',
+        'version': '1.0.0',
+        'endpoints': {
+            'webhook': '/webhook/stripe',
+            'pixels': '/api/pixels',
+            'logs': '/api/pixels/<manager_id>/logs'
+        }
+    }
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    return {'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()}
+
 @app.route('/api/pixels', methods=['GET'])
 def list_pixels():
     pixels = TikTokPixel.query.filter_by(ativo=True).all()
