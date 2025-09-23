@@ -17,8 +17,14 @@ app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'chave_padrao_insegura')
 CORS(app)
 
-# Configuração do banco
-database_url = os.getenv('DATABASE_URL', 'postgresql://tiktok_user:sua_senha_segura_123@localhost/tiktok_automation')
+# Configuração do banco - FORÇAR SQLite
+database_url = os.getenv('DATABASE_URL', 'sqlite:///instance/tiktok_automation.db')
+
+# Garantir que sempre use SQLite em produção
+if database_url.startswith('postgres://'):
+    print("⚠️  PostgreSQL detectado, forçando SQLite...")
+    database_url = 'sqlite:///instance/tiktok_automation.db'
+
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -460,7 +466,7 @@ def test_webhook_real():
     log = EventLog(
         pixel_id=pixel.pixel_id,
         stripe_event_id=data.get('id'),
-        stripe_event_type=data.get('type', 'test'),
+        stripe_event_type=data.get('type'),
         status='success' if result['success'] else 'error',
         error_message=result.get('error'),
         tiktok_response=json.dumps(result.get('tiktok_response', {}))
