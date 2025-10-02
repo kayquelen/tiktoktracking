@@ -25,8 +25,9 @@ app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'chave_padrao_insegura')
 CORS(app)
 
-# Configuração do banco - Supabase PostgreSQL
+# Configuração do banco - Supabase PostgreSQL com fallback
 database_url = os.getenv('DATABASE_URL')
+use_supabase_api = False
 
 if database_url:
     # Converter postgres:// para postgresql:// se necessário (Supabase usa postgres://)
@@ -39,6 +40,14 @@ if database_url:
         print(f"⚠️  DATABASE_URL inválido: {database_url}")
         database_url = 'sqlite:///:memory:'
         print("   Fallback para SQLite em memória")
+        
+    # Se tiver Supabase configurado mas falhar conexão, usar API REST
+    if 'supabase.co' in database_url and SUPABASE_AVAILABLE:
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_KEY')
+        if supabase_url and supabase_key:
+            use_supabase_api = True
+            print("🔄 Preparando fallback para Supabase REST API")
 else:
     # Fallback para SQLite em memória se não houver DATABASE_URL
     database_url = 'sqlite:///:memory:'
@@ -49,11 +58,13 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Configurações SSL para Supabase
 if database_url and database_url.startswith('postgresql://'):
+    connect_args = {
+        'sslmode': 'require',
+        'sslrootcert': os.path.join(os.path.dirname(__file__), 'prod-ca-2021.crt')
+    }
+    
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'connect_args': {
-            'sslmode': 'require',
-            'sslcert': 'prod-ca-2021.crt'
-        }
+        'connect_args': connect_args
     }
 
 db = SQLAlchemy(app)
