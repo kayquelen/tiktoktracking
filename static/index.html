@@ -355,10 +355,10 @@
                 if (data.success) {
                     document.getElementById('total-pixels').textContent = data.stats.total_pixels;
                     document.getElementById('total-events').textContent = data.stats.total_events;
-                    document.getElementById('success-rate').textContent = `${data.stats.success_rate}%`;
+                    document.getElementById('success-rate').textContent = data.stats.success_rate + '%';
                 }
-            } catch (e) {
-                console.error('Erro ao carregar stats', e);
+            } catch (error) {
+                console.error('Erro ao carregar estatísticas:', error);
             }
         }
 
@@ -369,140 +369,224 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    currentPixels = data.pixels || [];
-                    const container = document.getElementById('pixels');
-                    container.innerHTML = '';
-
-                    if (currentPixels.length === 0) {
-                        container.innerHTML = '<p>Nenhum pixel cadastrado ainda.</p>';
-                        return;
-                    }
-
-                    currentPixels.forEach(p => {
-                        const el = document.createElement('div');
-                        el.className = 'pixel-item';
-                        el.innerHTML = `
-                            <div class="pixel-info">
-                                <h4>${p.nome_pixel || 'Pixel ' + p.id_gestor}</h4>
-                                <p><strong>ID Gestor:</strong> ${p.id_gestor}</p>
-                                <p><strong>Pixel ID:</strong> ${p.pixel_id}</p>
-                                <p><strong>Criado em:</strong> ${p.created_at || '-'}</p>
-                            </div>
-                            <div class="pixel-actions">
-                                <button class="btn btn-secondary" onclick="viewLogs('${p.id_gestor}')">Ver Logs</button>
-                            </div>
-                        `;
-                        container.appendChild(el);
-                    });
+                    currentPixels = data.pixels;
+                    renderPixels(data.pixels);
+                } else {
+                    document.getElementById('pixels').innerHTML = `<div class="result error">Erro ao carregar pixels: ${data.error}</div>`;
                 }
-            } catch (e) {
-                console.error('Erro ao carregar pixels', e);
+            } catch (error) {
+                console.error('Erro ao carregar pixels:', error);
+                document.getElementById('pixels').innerHTML = `<div class="result error">Erro de conexão ao carregar pixels</div>`;
             }
         }
 
+        // Renderizar lista de pixels
+        function renderPixels(pixels) {
+            const container = document.getElementById('pixels');
+            
+            if (pixels.length === 0) {
+                container.innerHTML = `
+                    <p style="text-align: center; color: #636e72; padding: 40px;">
+                        Nenhum pixel cadastrado ainda.<br>
+                        Use o formulário acima para adicionar seu primeiro pixel.
+                    </p>
+                `;
+                return;
+            }
+            
+            container.innerHTML = pixels.map(pixel => `
+                <div class="pixel-item">
+                    <div class="pixel-info">
+                        <h4>${pixel.nome_pixel || `Pixel ${pixel.id_gestor}`}</h4>
+                        <p>
+                            <strong>ID Gestor:</strong> ${pixel.id_gestor} | 
+                            <strong>Pixel ID:</strong> ${pixel.pixel_id} | 
+                            <strong>Criado:</strong> ${new Date(pixel.created_at).toLocaleDateString('pt-BR')}
+                        </p>
+                    </div>
+                    <div class="pixel-actions">
+                        <button class="btn btn-secondary" onclick="viewLogs('${pixel.id_gestor}')">📋 Logs</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Ver logs de um pixel
         async function viewLogs(idGestor) {
             try {
                 const response = await fetch(`${API_BASE}/pixels/${idGestor}/logs`);
                 const data = await response.json();
                 
                 if (data.success) {
-                    const container = document.getElementById('pixels');
-                    const pre = document.createElement('pre');
-                    pre.textContent = JSON.stringify(data.logs, null, 2);
-                    container.appendChild(pre);
+                    if (data.logs.length === 0) {
+                        alert('Nenhum evento processado ainda para este pixel.');
+                        return;
+                    }
+                    
+                    const logsText = data.logs.map(log => 
+                        `${new Date(log.created_at).toLocaleString('pt-BR')} - ${log.stripe_event_type} - ${log.status.toUpperCase()}${log.error_message ? ' - ' + log.error_message : ''}`
+                    ).join('\\n');
+                    
+                    alert(`Últimos eventos do pixel ${idGestor}:\\n\\n${logsText}`);
+                } else {
+                    alert('Erro ao carregar logs: ' + data.error);
                 }
-            } catch (e) {
-                console.error('Erro ao carregar logs', e);
+            } catch (error) {
+                console.error('Erro ao carregar logs:', error);
+                alert('Erro de conexão ao carregar logs');
             }
         }
 
-        // Teste de webhook (simulado)
-        async function testWebhook() {
+        // Adicionar pixel
+        document.getElementById('pixelForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                id_gestor: document.getElementById('id_gestor').value,
+                pixel_id: document.getElementById('pixel_id').value,
+                access_token: document.getElementById('access_token').value,
+                nome_pixel: document.getElementById('nome_pixel').value
+            };
+            
             try {
-                const payload = {
-                    id: `evt_test_${Date.now()}`,
-                    type: 'payment_intent.succeeded',
-                    data: {
-                        object: {
-                            amount: 1990,
-                            currency: 'brl',
-                            metadata: {
-                                utm_term: prompt('Informe o ID do gestor (utm_term):', '1') || '1',
-                                customer_email: 'test@example.com'
-                            }
+                const response = await fetch(`${API_BASE}/pixels`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`✅ Pixel criado com sucesso!<br><strong>Chave de segurança:</strong> <code>${data.chave_seguranca}</code><br><small>Guarde esta chave com segurança!</small>`, 'success');
+                    document.getElementById('pixelForm').reset();
+                    loadPixels();
+                    loadStats();
+                } else {
+                    showAlert(`❌ Erro ao criar pixel: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao criar pixel:', error);
+                showAlert('❌ Erro de conexão ao criar pixel', 'error');
+            }
+        });
+
+        // Testar webhook (simulação)
+        async function testWebhook() {
+            if (currentPixels.length === 0) {
+                showWebhookResult('❌ Adicione pelo menos um pixel antes de testar', 'error');
+                return;
+            }
+            
+            const testEvent = {
+                id: 'evt_test_' + Date.now(),
+                type: 'payment_intent.succeeded',
+                data: {
+                    object: {
+                        id: 'pi_test_' + Date.now(),
+                        amount: 9999,
+                        currency: 'brl',
+                        metadata: {
+                            utm_term: currentPixels[0].id_gestor
                         }
                     }
-                };
-                
+                }
+            };
+            
+            try {
                 const response = await fetch(`${WEBHOOK_BASE}/stripe/test`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(testEvent)
                 });
-
-                const data = await response.json();
                 
-                if (data.success) {
-                    showWebhookResult('Teste de simulação processado com sucesso ✅', 'success');
+                const result = await response.json();
+                
+                if (result.success) {
+                    showWebhookResult(`✅ Teste de simulação realizado com sucesso!<br><strong>Pixel:</strong> ${result.pixel_id}<br><small>Este teste NÃO envia para o TikTok</small>`, 'success');
                 } else {
-                    showWebhookResult('Falha na simulação ❌: ' + (data.error || 'Erro desconhecido'), 'error');
+                    showWebhookResult(`❌ Erro no teste: ${result.error}`, 'error');
                 }
-            } catch (e) {
-                showWebhookResult('Erro na requisição: ' + e.message, 'error');
+            } catch (error) {
+                showWebhookResult(`❌ Erro de conexão: ${error.message}`, 'error');
             }
         }
 
-        // Teste de webhook (real)
+        // Testar webhook real
         async function testWebhookReal() {
-            try {
-                const payload = {
-                    id: `evt_real_${Date.now()}`,
-                    type: 'payment_intent.succeeded',
-                    data: {
-                        object: {
-                            amount: 1990,
-                            currency: 'brl',
-                            metadata: {
-                                utm_term: prompt('Informe o ID do gestor (utm_term):', '1') || '1',
-                                customer_email: 'test@example.com'
-                            },
-                            customer: 'cus_test_123'
+            if (currentPixels.length === 0) {
+                showWebhookResult('❌ Adicione pelo menos um pixel antes de testar', 'error');
+                return;
+            }
+            
+            if (!confirm('⚠️ ATENÇÃO: Isso vai REALMENTE enviar um evento para o TikTok!\\n\\nTem certeza que quer continuar?')) {
+                return;
+            }
+            
+            const testEvent = {
+                id: 'evt_real_test_' + Date.now(),
+                type: 'payment_intent.succeeded',
+                data: {
+                    object: {
+                        id: 'pi_real_test_' + Date.now(),
+                        amount: 9999,
+                        currency: 'brl',
+                        customer: 'cus_test_real_' + Date.now(),
+                        metadata: {
+                            utm_term: currentPixels[0].id_gestor,
+                            customer_email: 'test@example.com'
                         }
                     }
-                };
-                
+                }
+            };
+            
+            showWebhookResult('🚀 Enviando para TikTok... Aguarde...', 'success');
+            
+            try {
                 const response = await fetch(`${WEBHOOK_BASE}/stripe/test-real`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(testEvent)
                 });
-
-                const data = await response.json();
                 
-                if (data.success) {
-                    showWebhookResult('Evento enviado ao TikTok ✅', 'success');
+                const result = await response.json();
+                
+                if (result.success) {
+                    showWebhookResult(`🎉 EVENTO ENVIADO PARA TIKTOK COM SUCESSO!<br><strong>Pixel:</strong> ${result.pixel_id}<br><strong>Event ID:</strong> ${result.event_id}<br><strong>Resposta do TikTok:</strong><pre>${JSON.stringify(result.tiktok_result, null, 2)}</pre>`, 'success');
                 } else {
-                    showWebhookResult('Falha no envio ❌: ' + (data.error || 'Erro desconhecido'), 'error');
+                    showWebhookResult(`❌ Erro ao enviar para TikTok:<br><strong>Erro:</strong> ${result.message}<br><strong>Detalhes:</strong><pre>${JSON.stringify(result.tiktok_result || {}, null, 2)}</pre>`, 'error');
                 }
-            } catch (e) {
-                showWebhookResult('Erro na requisição: ' + e.message, 'error');
+                
+                // Atualizar estatísticas após o teste
+                setTimeout(() => {
+                    loadStats();
+                }, 1000);
+                
+            } catch (error) {
+                showWebhookResult(`❌ Erro de conexão: ${error.message}`, 'error');
             }
         }
 
-        // URL do webhook
-        function setWebhookUrl() {
-            const loc = window.location;
-            const base = `${loc.protocol}//${loc.host}`;
-            const url = `${base}/webhook/stripe`;
-            document.getElementById('webhook-url').textContent = url;
+        // Atualizar URL do webhook
+        function updateWebhookUrl() {
+            const webhookUrl = `${window.location.origin}/webhook/stripe`;
+            document.getElementById('webhook-url').textContent = webhookUrl;
         }
 
         // Inicialização
-        (function init() {
-            setWebhookUrl();
+        document.addEventListener('DOMContentLoaded', function() {
+            updateWebhookUrl();
             loadStats();
             loadPixels();
-        })();
+            
+            // Atualizar dados a cada 30 segundos
+            setInterval(() => {
+                loadStats();
+            }, 30000);
+        });
     </script>
 </body>
 </html>
+

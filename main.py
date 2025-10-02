@@ -11,6 +11,13 @@ from datetime import datetime
 from dotenv import load_dotenv
 import tempfile
 
+# Importação opcional do Supabase
+try:
+    from supabase import create_client, Client
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
+
 # Carregar variáveis de ambiente
 load_dotenv()
 
@@ -18,26 +25,53 @@ app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'chave_padrao_insegura')
 CORS(app)
 
-# Configuração do banco - FORÇAR SQLITE EM MEMÓRIA
-database_url = 'sqlite:///:memory:'
-print(" Usando SQLite em memória (dados não persistem entre restarts)")
+# Configuração do banco - Supabase PostgreSQL
+database_url = os.getenv('DATABASE_URL')
 
-# Só usar environment se for um caminho válido
-env_db_url = os.getenv('DATABASE_URL')
-if env_db_url:
-    if env_db_url.startswith('postgres://'):
-        print("  PostgreSQL detectado, mantendo SQLite em memória")
-    elif env_db_url == 'sqlite:///:memory:':
-        database_url = env_db_url
-        print("  Usando SQLite em memória do ambiente")
+if database_url:
+    # Converter postgres:// para postgresql:// se necessário (Supabase usa postgres://)
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        print("✅ Usando Supabase PostgreSQL")
+    elif database_url.startswith('postgresql://'):
+        print("✅ Usando PostgreSQL")
     else:
-        print(f"  DATABASE_URL inválido ignorado: {env_db_url}")
-        print("  Mantendo SQLite em memória")
+        print(f"⚠️  DATABASE_URL inválido: {database_url}")
+        database_url = 'sqlite:///:memory:'
+        print("   Fallback para SQLite em memória")
+else:
+    # Fallback para SQLite em memória se não houver DATABASE_URL
+    database_url = 'sqlite:///:memory:'
+    print("⚠️  DATABASE_URL não configurado, usando SQLite em memória")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Configurações SSL para Supabase
+if database_url and database_url.startswith('postgresql://'):
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'connect_args': {
+            'sslmode': 'require',
+            'sslcert': 'prod-ca-2021.crt'
+        }
+    }
+
 db = SQLAlchemy(app)
+
+# Inicializar cliente Supabase (opcional)
+supabase_client = None
+if SUPABASE_AVAILABLE:
+    supabase_url = os.getenv('SUPABASE_URL')
+    supabase_key = os.getenv('SUPABASE_KEY')
+    
+    if supabase_url and supabase_key:
+        try:
+            supabase_client = create_client(supabase_url, supabase_key)
+            print("✅ Cliente Supabase inicializado")
+        except Exception as e:
+            print(f"⚠️  Erro ao inicializar Supabase: {e}")
+    else:
+        print("⚠️  SUPABASE_URL ou SUPABASE_KEY não configurados")
 
 # Modelo do Pixel
 class TikTokPixel(db.Model):
@@ -234,9 +268,9 @@ class TikTokEventsAPI:
             }
 
 # Rotas da API
-@app.route('/')
-def home():
-    """Página inicial - Health Check"""
+@app.route('/api')
+def api_info():
+    """Informações da API"""
     return {
         'status': 'ok',
         'service': 'TikTok Stripe Integration',
@@ -715,10 +749,19 @@ def static_files(path):
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+            print("✅ Tabelas criadas/verificadas com sucesso")
+        except Exception as e:
+            print(f"⚠️  Erro ao criar tabelas: {e}")
+            print("   Continuando mesmo assim...")
     
     host = os.getenv('HOST', '0.0.0.0')
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('DEBUG', 'False').lower() == 'true'
+    
+    print(f"🚀 Iniciando servidor em {host}:{port}")
+    print(f"   Debug: {debug}")
+    print(f"   Ambiente: {os.getenv('APP_ENV', 'development')}")
     
     app.run(host=host, port=port, debug=debug)
